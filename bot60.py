@@ -8,7 +8,7 @@ from telegram.ext import Application, CommandHandler, MessageHandler, filters, C
 
 # Configura il logging
 logging.basicConfig(
-    format='%(asctime)s - %(name)s - %(levellevel)s - %(message)s',
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.INFO
 )
 
@@ -27,7 +27,8 @@ async def handle_message(update: Update, context: CallbackContext) -> None:
         solana_address = match.group(0)
         keyboard = [
             [
-                InlineKeyboardButton("🚀 Compra ora tramite @SolTradingBot 🚀", url=f"https://t.me/SolTradingBot?start={solana_address}")
+                InlineKeyboardButton("🚀 Compra ora tramite @SolTradingBot 🚀", url=f"https://t.me/SolTradingBot?start={solana_address}"),
+                InlineKeyboardButton("Compra ora su BullX♉", url=f"https://bullx.io/terminal?chainId=1399811149&address={solana_address}")
             ]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
@@ -39,7 +40,7 @@ async def error(update: Update, context: CallbackContext) -> None:
     logger.warning(f'Update "{update}" caused error "{context.error}"')
 
 def main() -> None:
-    token = '6715875529:AAEGDy7ww4cxnbEKb0E51KZyaHh6YjkpETM'  # Token del bot (oscurato perchè privato)
+    token = '6715875529:AAG2NbGFsBhO0Eg4GvGR-yInlWIg-siU5D0'  # Token del bot
 
     # Creazione dell'applicazione
     application = Application.builder().token(token).build()

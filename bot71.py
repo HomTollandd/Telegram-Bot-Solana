@@ -49,7 +49,11 @@ async def update_info(message_id: int, chat_id: int, solana_address: str, initia
         price = f"${pair_data.get('priceUsd', 'N/A')}"
         current_market_cap_value = float(pair_data.get('marketCap', 0))
 
-        # Mantieni fisso il market cap al momento della chiamata
+        # Mantieni fisso il market cap al momento della chiamata se non è valido
+        if not validate_market_cap(current_market_cap_value):
+            logging.warning(f"Invalid market cap received for {solana_address}. Keeping previous value.")
+            current_market_cap_value = initial_market_cap
+
         current_market_cap_formatted = format_number(initial_market_cap)
         
         # Calcolo della percentuale di profitto/perdita
@@ -61,19 +65,12 @@ async def update_info(message_id: int, chat_id: int, solana_address: str, initia
         coin_name = pair_data['baseToken']['name']
 
         # Check if 'info' exists in pair_data
-        if 'info' in pair_data:
-            info = pair_data['info']
-            socials = info.get('socials', [])
-            websites = info.get('websites', [])
-            website_url = websites[0].get('url', '') if websites else ''
-            twitter_url = next((s['url'] for s in socials if s['type'] == 'twitter'), '')
-            telegram_url = next((s['url'] for s in socials if s['type'] == 'telegram'), '')
-        else:
-            logging.warning(f"'info' key not found for address {solana_address}.")
-            socials = []
-            website_url = ''
-            twitter_url = ''
-            telegram_url = ''
+        info = pair_data.get('info', {})
+        socials = info.get('socials', [])
+        websites = info.get('websites', [])
+        website_url = websites[0].get('url', '') if websites else ''
+        twitter_url = next((s['url'] for s in socials if s['type'] == 'twitter'), '')
+        telegram_url = next((s['url'] for s in socials if s['type'] == 'telegram'), '')
 
         social_buttons_flattened = [
             InlineKeyboardButton("Telegram", url=telegram_url) if telegram_url else None,
@@ -87,7 +84,7 @@ async def update_info(message_id: int, chat_id: int, solana_address: str, initia
         social_buttons_flattened = [btn for btn in social_buttons_flattened if btn is not None]
 
         new_message_text = (
-            f"**Nome Coin:** {coin_name} /SOL\n"
+            f"**Nome Coin:** {coin_name}\n"
             f"**CA:** {solana_address} [Copy](tg://sendMessage?text={solana_address})\n"
             f"📈 **Prezzo attuale:** {price}\n"
             f"💰 **Market Cap (al momento della call):** {current_market_cap_formatted} ({change_symbol}{abs(percentage_change):.2f}%)\n"
@@ -118,8 +115,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         solana_address = match.group(0)
 
         keyboard = [
-            [InlineKeyboardButton("@SolTradingBot 🚀", url=f"https://t.me/SolTradingBot?start={solana_address}")],
-            [InlineKeyboardButton("BullX🐂♉", url=f"https://bullx.io/terminal?chainId=1399811149&address={solana_address}")]
+            [InlineKeyboardButton("🚀 Compra ora tramite @SolTradingBot 🚀", url=f"https://t.me/SolTradingBot?start={solana_address}")],
+            [InlineKeyboardButton("Compra ora su BullX🐂♉", url=f"https://bullx.io/terminal?chainId=1399811149&address={solana_address}")]
         ]
 
         reply_markup = InlineKeyboardMarkup(keyboard)
@@ -134,30 +131,19 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             initial_market_cap_value = float(pair_data.get('marketCap', 0))
 
             # Store the initial market cap value to maintain it during updates
-            context.user_data['initial_market_cap'] = initial_market_cap_value
+            context.user_data[solana_address] = {
+                'initial_market_cap': initial_market_cap_value,
+                'message_id': button_message.message_id,
+                'chat_id': button_message.chat.id,
+                'coin_name': pair_data['baseToken']['name']
+            }
 
             initial_market_cap_formatted = format_number(initial_market_cap_value)
             lp = format_number(pair_data.get('liquidity', {}).get('usd', 0))
             volume = format_number(pair_data.get('volume', {}).get('h24', 0))
-            coin_name = pair_data['baseToken']['name']
-
-            # Check if 'info' exists in pair_data
-            if 'info' in pair_data:
-                info = pair_data['info']
-                socials = info.get('socials', [])
-                websites = info.get('websites', [])
-                website_url = websites[0].get('url', '') if websites else ''
-                twitter_url = next((s['url'] for s in socials if s['type'] == 'twitter'), '')
-                telegram_url = next((s['url'] for s in socials if s['type'] == 'telegram'), '')
-            else:
-                logging.warning(f"'info' key not found for address {solana_address}.")
-                socials = []
-                website_url = ''
-                twitter_url = ''
-                telegram_url = ''
 
             info_message_text = (
-                f"**Nome Coin:** {coin_name}\n"
+                f"**Nome Coin:** {pair_data['baseToken']['name']}\n"
                 f"**CA:** {solana_address} [Copy](tg://sendMessage?text={solana_address})\n"
                 f"📈 **Prezzo attuale:** {price}\n"
                 f"💰 **Market Cap (al momento della call):** {initial_market_cap_formatted} (+{abs(calculate_percentage_change(initial_market_cap_value, initial_market_cap_value)):.2f}% ✅)\n"
@@ -168,15 +154,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             )
 
             social_buttons_flattened = [
-                InlineKeyboardButton("Telegram", url=telegram_url) if telegram_url else None,
-                InlineKeyboardButton("Twitter", url=twitter_url) if twitter_url else None,
-                InlineKeyboardButton("Website", url=website_url) if website_url else None,
                 InlineKeyboardButton("DexScreener", url=pair_data['url']),
                 InlineKeyboardButton("🔄 Aggiorna", callback_data=f'update_{solana_address}')
             ]
-
-            # Filter out None values from the buttons list
-            social_buttons_flattened = [btn for btn in social_buttons_flattened if btn is not None]
 
             await update.message.reply_text(
                 text=info_message_text,
@@ -195,11 +175,14 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     if solana_address_match:
         solana_address = solana_address_match.group(1)
         
-        # Recupera il market cap iniziale memorizzato
-        initial_market_cap_value = context.user_data.get('initial_market_cap', 0.0)
-
-        # Aggiorna le informazioni del token per tutti gli utenti nel gruppo o canale
-        await update_info(query.message.message_id, query.message.chat.id, solana_address, initial_market_cap_value, context)
+        # Recupera il market cap iniziale memorizzato e altri dati pertinenti
+        stored_data = context.user_data.get(solana_address)
+        
+        if stored_data:
+            initial_market_cap_value = stored_data['initial_market_cap']
+            
+            # Aggiorna le informazioni del token
+            await update_info(query.message.message_id, stored_data['chat_id'], solana_address, initial_market_cap_value, context)
 
 # Funzione per gestire il comando /solana e restituire il prezzo di Solana
 async def solana_price(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
